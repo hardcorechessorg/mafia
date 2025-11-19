@@ -1,62 +1,84 @@
+import express from "express";
 import { WebSocketServer } from "ws";
-import http from "http";
+import cors from "cors";
 
-const server = http.createServer();
-const wss = new WebSocketServer({ server });
+const app = express();
+app.use(cors());
+app.use(express.json());
 
-const rooms = {}; 
-// rooms = { roomId: { host: socket, players: { socketId: role } } }
+// Хранилище комнат
+const rooms = {};
 
-function send(socket, type, data = {}) {
-  socket.send(JSON.stringify({ type, ...data }));
-}
+// Создать комнату
+app.post("/create-room", (req, res) => {
+    const { roomId, roles } = req.body;
 
-wss.on("connection", (socket) => {
-  socket.id = Math.random().toString(36).slice(2);
+    rooms[roomId] = {
+        players: [],
+        rolesConfig: roles, // { mafia: 2, doctor: 1, detective: 1, ... }
+        assigned: false,
+    };
 
-  socket.on("message", (raw) => {
-    const msg = JSON.parse(raw);
-    const { type } = msg;
-
-    if (type === "create_room") {
-      const roomId = Math.random().toString(36).slice(2, 7);
-      rooms[roomId] = { host: socket, players: {} };
-      send(socket, "room_created", { roomId });
-    }
-
-    if (type === "join_room") {
-      const { roomId, name } = msg;
-      if (!rooms[roomId]) return send(socket, "error", { message: "Комната не найдена" });
-
-      rooms[roomId].players[socket.id] = { socket, name, role: null };
-      send(socket, "joined", { roomId });
-      send(rooms[roomId].host, "player_list", {
-        players: Object.values(rooms[roomId].players).map(p => p.name)
-      });
-    }
-
-    if (type === "assign_roles") {
-      const { roomId, roles } = msg;
-      const room = rooms[roomId];
-      const sockets = Object.values(room.players);
-
-      const shuffled = [...sockets].sort(() => Math.random() - 0.5);
-      shuffled.forEach((p, i) => {
-        p.role = roles[i] || "Мирный житель";
-        send(p.socket, "your_role", { role: p.role });
-      });
-    }
-  });
-
-  socket.on("close", () => {
-    for (const roomId in rooms) {
-      const room = rooms[roomId];
-      delete room.players[socket.id];
-      if (room.host === socket) delete rooms[roomId];
-    }
-  });
+    res.json({ success: true });
 });
 
-const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => console.log("Server running on", PORT));
+// Подключение игрока
+app.post("/join-room", (req, res) => {
+    const { roomId, playerId } = req.body;
+
+    if (!rooms[roomId]) {
+        return res.json({ success: false, error: "Комната не существует" });
+    }
+
+    rooms[roomId].players.push({
+        id: playerId,
+        role: null,
+        ws: null
+    });
+
+    res.json({ success: true });
+});
+
+// Запуск игры — рандомная выдача ролей
+app.post("/start-game", (req, res) => {
+    const { roomId } = req.body;
+
+    const room = rooms[roomId];
+    if (!room) return res.json({ success: false });
+
+    const players = room.players;
+    const rolesArray = [];
+
+    // Собираем роли
+    for (let role in room.rolesConfig) {
+        for (let i = 0; i < room.rolesConfig[role]; i++) {
+            rolesArray.push(role);
+        }
+    }
+
+    // Остальные — мирные
+    while (rolesArray.length < players.length) {
+        rolesArray.push("Мирный житель");
+    }
+
+    // Перемешиваем роли
+    rolesArray.sort(() => Math.random() - 0.5);
+
+    // Раздаём игрокам
+    players.forEach((player, index) => {
+        player.role = rolesArray[index];
+
+        // если игрок подключён к WS — отправляем роль
+        if (player.ws) {
+            player.ws.send(JSON.stringify({
+                type: "role",
+                role: player.role
+            }));
+        }
+    });
+
+    room.assigned = true;
+
+    res.json({ success: true });
+});
 
