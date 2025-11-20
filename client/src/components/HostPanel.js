@@ -7,7 +7,6 @@ const socket = io(SERVER_URL);
 
 function HostPanel() {
   const [roomId, setRoomId] = useState(null);
-  const [hostId, setHostId] = useState(null);
   const [settings, setSettings] = useState({
     mafia: 2,
     don: 1,
@@ -24,7 +23,6 @@ function HostPanel() {
   useEffect(() => {
     socket.on('room-created', (data) => {
       setRoomId(data.roomId);
-      setHostId(data.hostId);
       setSuccess(`Комната создана! ID: ${data.roomId}`);
       setError(null);
     });
