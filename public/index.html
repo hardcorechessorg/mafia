@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Онлайн Мафия - Раздатчик карт</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <i class="fas fa-user-secret"></i>
+                <h1>Онлайн Мафия</h1>
+            </div>
+            <div class="stats" id="stats">
+                <span><i class="fas fa-door-open"></i> <span id="room-count">0</span> комнат</span>
+                <span><i class="fas fa-users"></i> <span id="player-count">0</span> игроков</span>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- Экран выбора -->
+            <div class="screen" id="screen-main">
+                <div class="card welcome-card">
+                    <h2><i class="fas fa-gamepad"></i> Раздатчик карт для игры в Мафию</h2>
+                    <p>Создайте комнату или присоединитесь к существующей, чтобы начать игру</p>
+                    
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" onclick="showCreateRoom()">
+                            <i class="fas fa-plus-circle"></i> Создать комнату
+                        </button>
+                        <button class="btn btn-secondary" onclick="showJoinRoom()">
+                            <i class="fas fa-sign-in-alt"></i> Присоединиться к комнате
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="instructions">
+                    <h3><i class="fas fa-info-circle"></i> Как играть:</h3>
+                    <div class="steps">
+                        <div class="step">
+                            <div class="step-number">1</div>
+                            <p><strong>Ведущий</strong> создает комнату и выбирает роли</p>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">2</div>
+                            <p><strong>Игроки</strong> присоединяются по коду комнаты</p>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">3</div>
+                            <p><strong>Ведущий</strong> раздает роли игрокам</p>
+                        </div>
+                        <div class="step">
+                            <div class="step-number">4</div>
+                            <p><strong>Начинается игра!</strong> Ведущий управляет процессом</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Экран создания комнаты -->
+            <div class="screen" id="screen-create" style="display: none;">
+                <div class="card">
+                    <h2><i class="fas fa-plus-circle"></i> Создание комнаты</h2>
+                    
+                    <div class="form-group">
+                        <label for="host-name"><i class="fas fa-user"></i> Ваше имя (как ведущего)</label>
+                        <input type="text" id="host-name" placeholder="Введите ваше имя" maxlength="20">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="room-name"><i class="fas fa-door-closed"></i> Название комнаты</label>
+                        <input type="text" id="room-name" placeholder="Например: Мафия вечером" maxlength="30">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="player-count"><i class="fas fa-users"></i> Количество игроков</label>
+                        <select id="player-count">
+                            <option value="6">6 игроков</option>
+                            <option value="7">7 игроков</option>
+                            <option value="8" selected>8 игроков</option>
+                            <option value="9">9 игроков</option>
+                            <option value="10">10 игроков</option>
+                            <option value="11">11 игроков</option>
+                            <option value="12">12 игроков</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label><i class="fas fa-id-card"></i> Выберите роли для игры</label>
+                        <div class="roles-selection">
+                            <div class="role-option" data-role="mafia">
+                                <div class="role-icon" style="background-color: #e94560;">M</div>
+                                <div class="role-info">
+                                    <div class="role-name">Мафия</div>
+                                    <div class="role-count">
+                                        <button class="count-btn minus">-</button>
+                                        <span class="count">2</span>
+                                        <button class="count-btn plus">+</button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="role-option" data-role="civilian">
+                                <div class="role-icon" style="background-color: #8ac6d1;">М</div>
+                                <div class="role-info">
+                                    <div class="role-name">Мирный житель</div>
+                                    <div class="role-count">
+                                        <button class="count-btn minus">-</button>
+                                        <span class="count">4</span>
+                                        <button class="count-btn plus">+</button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="role-option" data-role="sheriff">
+                                <div class="role-icon" style="background-color: #4cc9f0;">Ш</div>
+                                <div class="role-info">
+                                    <div class="role-name">Шериф</div>
+                                    <div class="role-count">
+                                        <button class="count-btn minus">-</button>
+                                        <span class="count">1</span>
+                                        <button class="count-btn plus">+</button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="role-option" data-role="don">
+                                <div class="role-icon" style="background-color: #b30000;">Д</div>
+                                <div class="role-info">
+                                    <div class="role-name">Дон мафии</div>
+                                    <div class="role-count">
+                                        <button class="count-btn minus">-</button>
+                                        <span class="count">0</span>
+                                        <button class="count-btn plus">+</button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="role-option" data-role="doctor">
+                                <div class="role-icon" style="background-color: #6fffb0;">Д</div>
+                                <div class="role-info">
+                                    <div class="role-name">Доктор</div>
+                                    <div class="role-count">
+                                        <button class="count-btn minus">-</button>
+                                        <span class="count">1</span>
+                                        <button class="count-btn plus">+</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="role-stats">
+                            <div>Выбрано ролей: <span id="selected-roles-count">8</span></div>
+                            <div>Необходимо: <span id="required-roles-count">8</span></div>
+                            <div id="role-balance" class="balanced">✓ Сбалансировано</div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button class="btn btn-secondary" onclick="showMainScreen()">
+                            <i class="fas fa-arrow-left"></i> Назад
+                        </button>
+                        <button class="btn btn-primary" id="create-room-btn" onclick="createRoom()">
+                            <i class="fas fa-play-circle"></i> Создать комнату
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Экран присоединения к комнате -->
+            <div class="screen" id="screen-join" style="display: none;">
+                <div class="card">
+                    <h2><i class="fas fa-sign-in-alt"></i> Присоединение к комнате</h2>
+                    
+                    <div class="form-group">
+                        <label for="player-name"><i class="fas fa-user"></i> Ваше имя</label>
+                        <input type="text" id="player-name" placeholder="Введите ваше имя" maxlength="20">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="room-code"><i class="fas fa-key"></i> Код комнаты</label>
+                        <input type="text" id="room-code" placeholder="Введите код комнаты" maxlength="6" style="text-transform: uppercase;">
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button class="btn btn-secondary" onclick="showMainScreen()">
+                            <i class="fas fa-arrow-left"></i> Назад
+                        </button>
+                        <button class="btn btn-primary" onclick="joinRoom()">
+                            <i class="fas fa-play-circle"></i> Присоединиться
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Экран игры (для ведущего) -->
+            <div class="screen" id="screen-game-host" style="display: none;">
+                <div class="card">
+                    <div class="game-header">
+                        <div>
+                            <h2><i class="fas fa-crown"></i> Комната: <span id="game-room-name"></span></h2>
+                            <p class="room-code">Код комнаты: <strong id="game-room-code"></strong></p>
+                        </div>
+                        <div class="player-count-badge">
+                            <i class="fas fa-users"></i> 
+                            <span id="current-players">0</span>/<span id="max-players">0</span>
+                        </div>
+                    </div>
+                    
+                    <div class="room-info">
+                        <div class="info-box">
+                            <i class="fas fa-link"></i>
+                            <div>
+                                <div class="info-label">Ссылка для приглашения:</div>
+                                <div class="info-value" id="invite-link"></div>
+                            </div>
+                            <button class="btn btn-small" onclick="copyInviteLink()">
+                                <i class="fas fa-copy"></i> Копировать
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="players-section">
+                        <h3><i class="fas fa-users"></i> Игроки в комнате</h3>
+                        <div class="players-list" id="players-list-host">
+                            <!-- Список игроков будет заполняться здесь -->
+                            <div class="empty-state">
+                                <i class="fas fa-user-clock"></i>
+                                <p>Ожидание игроков...</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="game-controls">
+                        <button class="btn btn-primary" id="shuffle-btn" onclick="shuffleRoles()" disabled>
+                            <i class="fas fa-random"></i> Раздать роли
+                        </button>
+                        <button class="btn btn-secondary" id="reveal-btn" onclick="revealRoles()" disabled>
+                            <i class="fas fa-eye"></i> Показать роли
+                        </button>
+                        <button class="btn btn-danger" onclick="leaveRoom()">
+                            <i class="fas fa-sign-out-alt"></i> Выйти
+                        </button>
+                    </div>
+                    
+                    <div class="notification" id="notification"></div>
+                </div>
+            </div>
+
+            <!-- Экран игры (для игрока) -->
+            <div class="screen" id="screen-game-player" style="display: none;">
+                <div class="card">
+                    <div class="game-header">
+                        <div>
+                            <h2><i class="fas fa-users"></i> Комната: <span id="player-room-name"></span></h2>
+                            <p class="room-code">Код комнаты: <strong id="player-room-code"></strong></p>
+                        </div>
+                        <div class="player-count-badge">
+                            <i class="fas fa-users"></i> 
+                            <span id="player-current-players">0</span>/<span id="player-max-players">0</span>
+                        </div>
+                    </div>
+                    
+                    <div class="player-info-card">
+                        <div class="player-info">
+                            <div class="player-avatar">
+                                <i class="fas fa-user"></i>
+                            </div>
+                            <div class="player-details">
+                                <div class="player-name">Игрок: <strong id="display-player-name"></strong></div>
+                                <div class="player-role">
+                                    Роль: <strong id="player-role-display">ожидание...</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="players-section">
+                        <h3><i class="fas fa-users"></i> Игроки в комнате</h3>
+                        <div class="players-list" id="players-list-player">
+                            <!-- Список игроков будет заполняться здесь -->
+                            <div class="empty-state">
+                                <i class="fas fa-user-clock"></i>
+                                <p>Ожидание игроков...</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="game-controls">
+                        <button class="btn btn-danger" onclick="leaveRoom()">
+                            <i class="fas fa-sign-out-alt"></i> Выйти из комнаты
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p> Онлайн раздатчик карт для игры в Мафию | Сервер: <span id="server-status" class="status-online">● Онлайн</span></p>
+        </footer>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
