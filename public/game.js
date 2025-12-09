@@ -19,6 +19,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Проверяем наличие кода комнаты в URL
     checkUrlParams();
+    
+    // Устанавливаем дефолтные роли для 8 игроков
+    setDefaultRoles(8);
 });
 
 // Инициализация выбора ролей
@@ -27,7 +30,6 @@ function initRoleSelection() {
     document.querySelectorAll('.count-btn').forEach(button => {
         button.addEventListener('click', function() {
             const roleOption = this.closest('.role-option');
-            const role = roleOption.dataset.role;
             const countElement = roleOption.querySelector('.count');
             let count = parseInt(countElement.textContent);
             
@@ -38,17 +40,50 @@ function initRoleSelection() {
             }
             
             countElement.textContent = count;
-            updateRoleStats();
+            checkRoleBalance();
         });
     });
     
     // Обновляем статистику при изменении количества игроков
-    document.getElementById('player-count').addEventListener('change', updateRoleStats);
+    const playerCountSelect = document.getElementById('player-count');
+    if (playerCountSelect) {
+        playerCountSelect.addEventListener('change', function() {
+            const playerCount = parseInt(this.value);
+            setDefaultRoles(playerCount);
+        });
+    }
 }
 
-// Обновление статистики ролей
-function updateRoleStats() {
-    const playerCount = parseInt(document.getElementById('player-count').value);
+// Функция для установки ролей по умолчанию в зависимости от количества игроков
+function setDefaultRoles(playerCount) {
+    const rolesConfig = {
+        6: { mafia: 1, civilian: 4, sheriff: 1, doctor: 0, don: 0, maniac: 0, courtesan: 0 },
+        7: { mafia: 2, civilian: 4, sheriff: 1, doctor: 0, don: 0, maniac: 0, courtesan: 0 },
+        8: { mafia: 2, civilian: 4, sheriff: 1, doctor: 1, don: 0, maniac: 0, courtesan: 0 },
+        9: { mafia: 2, civilian: 5, sheriff: 1, doctor: 1, don: 0, maniac: 0, courtesan: 0 },
+        10: { mafia: 3, civilian: 5, sheriff: 1, doctor: 1, don: 0, maniac: 0, courtesan: 0 },
+        11: { mafia: 3, civilian: 6, sheriff: 1, doctor: 1, don: 0, maniac: 0, courtesan: 0 },
+        12: { mafia: 4, civilian: 6, sheriff: 1, doctor: 1, don: 0, maniac: 0, courtesan: 0 }
+    };
+    
+    const config = rolesConfig[playerCount] || rolesConfig[8];
+    
+    // Устанавливаем значения для каждой роли
+    Object.keys(config).forEach(role => {
+        const option = document.querySelector(`.role-option[data-role="${role}"]`);
+        if (option) {
+            option.querySelector('.count').textContent = config[role];
+        }
+    });
+    
+    checkRoleBalance();
+}
+
+// Функция проверки баланса ролей
+function checkRoleBalance() {
+    const playerCountElement = document.getElementById('player-count');
+    const playerCount = playerCountElement ? parseInt(playerCountElement.value) : 8;
+    
     let selectedRoles = 0;
     
     // Считаем выбранные роли
@@ -58,20 +93,69 @@ function updateRoleStats() {
     });
     
     // Обновляем отображение
-    document.getElementById('selected-roles-count').textContent = selectedRoles;
-    document.getElementById('required-roles-count').textContent = playerCount;
+    const selectedCountElement = document.getElementById('selected-roles-count');
+    const requiredCountElement = document.getElementById('required-roles-count');
+    
+    if (selectedCountElement) {
+        selectedCountElement.textContent = selectedRoles;
+    }
+    
+    if (requiredCountElement) {
+        requiredCountElement.textContent = playerCount;
+    }
     
     const balanceElement = document.getElementById('role-balance');
+    const createButton = document.getElementById('create-room-btn');
+    
     if (selectedRoles === playerCount) {
         balanceElement.textContent = '✓ Сбалансировано';
         balanceElement.className = 'balanced';
+        if (createButton) createButton.disabled = false;
     } else if (selectedRoles < playerCount) {
         balanceElement.textContent = `Не хватает ${playerCount - selectedRoles} ролей`;
         balanceElement.className = 'unbalanced';
+        if (createButton) createButton.disabled = true;
     } else {
         balanceElement.textContent = `Лишних ${selectedRoles - playerCount} ролей`;
         balanceElement.className = 'unbalanced';
+        if (createButton) createButton.disabled = true;
     }
+}
+
+// Функция для автоматической балансировки ролей
+function autoBalanceRoles() {
+    const playerCountElement = document.getElementById('player-count');
+    const playerCount = playerCountElement ? parseInt(playerCountElement.value) : 8;
+    
+    let selectedRoles = 0;
+    
+    // Считаем текущие роли
+    document.querySelectorAll('.role-option').forEach(option => {
+        const count = parseInt(option.querySelector('.count').textContent);
+        selectedRoles += count;
+    });
+    
+    // Если ролей не хватает, добавляем мирных жителей
+    if (selectedRoles < playerCount) {
+        const civilianOption = document.querySelector('.role-option[data-role="civilian"]');
+        if (civilianOption) {
+            const civilianCount = civilianOption.querySelector('.count');
+            let currentCivilian = parseInt(civilianCount.textContent);
+            civilianCount.textContent = currentCivilian + (playerCount - selectedRoles);
+        }
+    }
+    // Если ролей слишком много, убираем лишних мирных жителей
+    else if (selectedRoles > playerCount) {
+        const civilianOption = document.querySelector('.role-option[data-role="civilian"]');
+        if (civilianOption) {
+            const civilianCount = civilianOption.querySelector('.count');
+            let currentCivilian = parseInt(civilianCount.textContent);
+            const newCount = Math.max(0, currentCivilian - (selectedRoles - playerCount));
+            civilianCount.textContent = newCount;
+        }
+    }
+    
+    checkRoleBalance();
 }
 
 // Показать главный экран
@@ -94,23 +178,8 @@ function showCreateRoom() {
     document.getElementById('room-name').value = '';
     document.getElementById('player-count').value = '8';
     
-    // Сбросить роли к значениям по умолчанию
-    document.querySelectorAll('.role-option').forEach(option => {
-        const role = option.dataset.role;
-        let defaultCount = 0;
-        
-        switch(role) {
-            case 'mafia': defaultCount = 2; break;
-            case 'civilian': defaultCount = 4; break;
-            case 'sheriff': defaultCount = 1; break;
-            case 'don': defaultCount = 0; break;
-            case 'doctor': defaultCount = 1; break;
-        }
-        
-        option.querySelector('.count').textContent = defaultCount;
-    });
-    
-    updateRoleStats();
+    // Установить роли по умолчанию для 8 игроков
+    setDefaultRoles(8);
 }
 
 // Показать экран присоединения
@@ -550,7 +619,10 @@ function handleRolesShuffled(roomInfo) {
     updatePlayersList(roomInfo.players);
     
     // Обновляем кнопки
-    document.getElementById('reveal-btn').disabled = false;
+    const revealBtn = document.getElementById('reveal-btn');
+    if (revealBtn) {
+        revealBtn.disabled = false;
+    }
     
     // Для игроков обновляем их роль
     if (!isHost) {
@@ -601,6 +673,7 @@ function showNotification(message, type) {
     
     notification.textContent = message;
     notification.className = `notification ${type}`;
+    notification.style.display = 'block';
     
     // Автоматически скрываем уведомление через 5 секунд
     setTimeout(() => {
