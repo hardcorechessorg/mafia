@@ -1,767 +1,342 @@
-// Конфигурация
-const SERVER_URL = window.location.hostname === 'localhost' 
-    ? 'http://localhost:3000' 
-    : window.location.origin;
-
-// Глобальные переменные
-let socket = null;
+const socket = io();
 let currentRoom = null;
-let currentPlayer = null;
 let isHost = false;
+let myRole = null;
 
-// Инициализация при загрузке страницы
-document.addEventListener('DOMContentLoaded', function() {
-    updateServerStats();
-    setInterval(updateServerStats, 30000);
-    
-    // Инициализируем выбор ролей
+const ROLES = {
+    mafia: { name: 'Мафия', className: 'role-mafia' },
+    civilian: { name: 'Мирный житель', className: 'role-civilian' },
+    sheriff: { name: 'Шериф', className: 'role-sheriff' },
+    doctor: { name: 'Доктор', className: 'role-doctor' },
+    don: { name: 'Дон мафии', className: 'role-don' }
+};
+
+// Настройки ролей по умолчанию
+const DEFAULT_ROLES = {
+    6: { mafia: 1, civilian: 4, sheriff: 1, doctor: 0, don: 0 },
+    7: { mafia: 2, civilian: 4, sheriff: 1, doctor: 0, don: 0 },
+    8: { mafia: 2, civilian: 4, sheriff: 1, doctor: 1, don: 0 },
+    9: { mafia: 2, civilian: 5, sheriff: 1, doctor: 1, don: 0 },
+    10: { mafia: 3, civilian: 5, sheriff: 1, doctor: 1, don: 0 }
+};
+
+// Инициализация
+document.addEventListener('DOMContentLoaded', () => {
     initRoleSelection();
-    
-    // Проверяем наличие кода комнаты в URL
-    checkUrlParams();
-    
-    // Инициализируем отображение
-    updateRequiredRolesDisplay();
 });
+
+// Управление экранами
+function showScreen(screenId) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+    document.getElementById(screenId).classList.remove('hidden');
+}
+
+function showMainScreen() {
+    showScreen('main-screen');
+    currentRoom = null;
+    isHost = false;
+    myRole = null;
+}
+
+function showCreateScreen() {
+    showScreen('create-screen');
+    updateRoleSelection();
+}
+
+function showJoinScreen() {
+    showScreen('join-screen');
+}
+
+function showGameScreen() {
+    showScreen('game-screen');
+}
 
 // Инициализация выбора ролей
 function initRoleSelection() {
-    // Обработчики для кнопок +/-
-    document.querySelectorAll('.count-btn').forEach(button => {
-        button.addEventListener('click', function() {
-            const roleOption = this.closest('.role-option');
-            const countElement = roleOption.querySelector('.count');
-            let count = parseInt(countElement.textContent);
-            
-            if (this.classList.contains('plus')) {
-                count++;
-            } else if (this.classList.contains('minus') && count > 0) {
-                count--;
-            }
-            
-            countElement.textContent = count;
-            checkRoleBalance();
-        });
+    const container = document.getElementById('role-selection');
+    container.innerHTML = '';
+    
+    Object.entries(ROLES).forEach(([id, role]) => {
+        const div = document.createElement('div');
+        div.className = 'role-option';
+        div.innerHTML = `
+            <div><strong>${role.name}</strong></div>
+            <div class="counter">
+                <button onclick="changeRoleCount('${id}', -1)">-</button>
+                <span id="count-${id}">0</span>
+                <button onclick="changeRoleCount('${id}', 1)">+</button>
+            </div>
+        `;
+        container.appendChild(div);
     });
+}
+
+// Обновление выбора ролей при изменении количества игроков
+function updateRoleSelection() {
+    const playerCount = parseInt(document.getElementById('player-count').value);
+    const defaultRoles = DEFAULT_ROLES[playerCount] || DEFAULT_ROLES[8];
+    
+    Object.entries(defaultRoles).forEach(([role, count]) => {
+        document.getElementById(`count-${role}`).textContent = count;
+    });
+    
+    document.getElementById('total-count').textContent = playerCount;
+    updateSelectedCount();
     
     // Обновляем при изменении количества игроков
-    const playerCountSelect = document.getElementById('player-count');
-    if (playerCountSelect) {
-        playerCountSelect.addEventListener('change', function() {
-            const playerCount = parseInt(this.value);
-            console.log('Количество игроков изменено на:', playerCount);
-            
-            // Обновляем отображение "Необходимо"
-            updateRequiredRolesDisplay();
-            
-            // Устанавливаем роли по умолчанию
-            setDefaultRoles(playerCount);
-            
-            // Проверяем баланс
-            checkRoleBalance();
-        });
-    }
+    document.getElementById('player-count').onchange = updateRoleSelection;
 }
 
-// Обновление отображения "Необходимо"
-function updateRequiredRolesDisplay() {
-    const playerCountSelect = document.getElementById('player-count');
-    const requiredCountElement = document.getElementById('required-roles-count');
+// Изменение количества ролей
+function changeRoleCount(roleId, delta) {
+    const span = document.getElementById(`count-${roleId}`);
+    let count = parseInt(span.textContent) + delta;
+    if (count < 0) count = 0;
+    span.textContent = count;
     
-    if (playerCountSelect && requiredCountElement) {
-        const playerCount = parseInt(playerCountSelect.value);
-        requiredCountElement.textContent = playerCount;
-        console.log('"Необходимо" обновлено на:', playerCount);
-    }
+    updateSelectedCount();
 }
 
-// Установка ролей по умолчанию
-function setDefaultRoles(playerCount) {
-    const rolesConfig = {
-        6: { mafia: 1, civilian: 4, sheriff: 1, doctor: 0, don: 0, maniac: 0, courtesan: 0 },
-        7: { mafia: 2, civilian: 4, sheriff: 1, doctor: 0, don: 0, maniac: 0, courtesan: 0 },
-        8: { mafia: 2, civilian: 4, sheriff: 1, doctor: 1, don: 0, maniac: 0, courtesan: 0 },
-        9: { mafia: 2, civilian: 5, sheriff: 1, doctor: 1, don: 0, maniac: 0, courtesan: 0 },
-        10: { mafia: 3, civilian: 5, sheriff: 1, doctor: 1, don: 0, maniac: 0, courtesan: 0 },
-        11: { mafia: 3, civilian: 6, sheriff: 1, doctor: 1, don: 0, maniac: 0, courtesan: 0 },
-        12: { mafia: 4, civilian: 6, sheriff: 1, doctor: 1, don: 0, maniac: 0, courtesan: 0 }
-    };
+// Обновление счетчика выбранных ролей
+function updateSelectedCount() {
+    const playerCount = parseInt(document.getElementById('player-count').value);
+    let total = 0;
     
-    const config = rolesConfig[playerCount] || rolesConfig[8];
-    
-    console.log(`Установка ролей для ${playerCount} игроков:`, config);
-    
-    // Устанавливаем значения для каждой роли
-    ['mafia', 'civilian', 'sheriff', 'doctor', 'don', 'maniac', 'courtesan'].forEach(role => {
-        const option = document.querySelector(`.role-option[data-role="${role}"]`);
-        if (option) {
-            const count = config[role] || 0;
-            option.querySelector('.count').textContent = count;
-        }
+    Object.keys(ROLES).forEach(roleId => {
+        total += parseInt(document.getElementById(`count-${roleId}`).textContent);
     });
     
-    checkRoleBalance();
+    document.getElementById('selected-count').textContent = total;
+    document.getElementById('total-count').textContent = playerCount;
+    
+    // Подсвечиваем если не совпадает
+    const selectedSpan = document.getElementById('selected-count');
+    selectedSpan.style.color = total === playerCount ? 'green' : 'red';
 }
 
-// Проверка баланса ролей
-function checkRoleBalance() {
-    const playerCountElement = document.getElementById('player-count');
-    const playerCount = playerCountElement ? parseInt(playerCountElement.value) : 8;
+// Автобалансировка ролей
+function autoBalance() {
+    const playerCount = parseInt(document.getElementById('player-count').value);
+    let currentTotal = 0;
     
-    let selectedRoles = 0;
-    
-    // Считаем выбранные роли
-    document.querySelectorAll('.role-option').forEach(option => {
-        const count = parseInt(option.querySelector('.count').textContent);
-        selectedRoles += count;
+    // Считаем текущие роли
+    Object.keys(ROLES).forEach(roleId => {
+        currentTotal += parseInt(document.getElementById(`count-${roleId}`).textContent);
     });
     
-    // Обновляем "Выбрано ролей"
-    const selectedCountElement = document.getElementById('selected-roles-count');
-    if (selectedCountElement) {
-        selectedCountElement.textContent = selectedRoles;
-    }
+    // Корректируем мирных жителей
+    const civilianCount = parseInt(document.getElementById('count-civilian').textContent);
+    const newCivilianCount = Math.max(0, civilianCount + (playerCount - currentTotal));
+    document.getElementById('count-civilian').textContent = newCivilianCount;
     
-    const balanceElement = document.getElementById('role-balance');
-    const createButton = document.getElementById('create-room-btn');
-    
-    if (!balanceElement) return;
-    
-    if (selectedRoles === playerCount) {
-        balanceElement.textContent = '✓ Сбалансировано';
-        balanceElement.className = 'balanced';
-        if (createButton) createButton.disabled = false;
-    } else if (selectedRoles < playerCount) {
-        balanceElement.textContent = `Не хватает ${playerCount - selectedRoles} ролей`;
-        balanceElement.className = 'unbalanced';
-        if (createButton) createButton.disabled = true;
-    } else {
-        balanceElement.textContent = `Лишних ${selectedRoles - playerCount} ролей`;
-        balanceElement.className = 'unbalanced';
-        if (createButton) createButton.disabled = true;
-    }
-}
-
-// Автобалансировка
-function autoBalanceRoles() {
-    const playerCountElement = document.getElementById('player-count');
-    const playerCount = playerCountElement ? parseInt(playerCountElement.value) : 8;
-    
-    let selectedRoles = 0;
-    
-    document.querySelectorAll('.role-option').forEach(option => {
-        const count = parseInt(option.querySelector('.count').textContent);
-        selectedRoles += count;
-    });
-    
-    if (selectedRoles < playerCount) {
-        const civilianOption = document.querySelector('.role-option[data-role="civilian"]');
-        if (civilianOption) {
-            const civilianCount = civilianOption.querySelector('.count');
-            let currentCivilian = parseInt(civilianCount.textContent);
-            civilianCount.textContent = currentCivilian + (playerCount - selectedRoles);
-        }
-    } else if (selectedRoles > playerCount) {
-        const civilianOption = document.querySelector('.role-option[data-role="civilian"]');
-        if (civilianOption) {
-            const civilianCount = civilianOption.querySelector('.count');
-            let currentCivilian = parseInt(civilianCount.textContent);
-            const newCount = Math.max(0, currentCivilian - (selectedRoles - playerCount));
-            civilianCount.textContent = newCount;
-        }
-    }
-    
-    checkRoleBalance();
-}
-
-// Показать экран создания комнаты
-function showCreateRoom() {
-    document.querySelectorAll('.screen').forEach(screen => {
-        screen.style.display = 'none';
-    });
-    document.getElementById('screen-create').style.display = 'block';
-    
-    // Сбросить значения
-    document.getElementById('host-name').value = '';
-    document.getElementById('room-name').value = '';
-    document.getElementById('player-count').value = '8';
-    
-    // Установить роли по умолчанию
-    setDefaultRoles(8);
-    updateRequiredRolesDisplay();
-}
-// Показать экран присоединения
-function showJoinRoom() {
-    document.querySelectorAll('.screen').forEach(screen => {
-        screen.style.display = 'none';
-    });
-    document.getElementById('screen-join').style.display = 'block';
-    
-    // Сбросить значения
-    document.getElementById('player-name').value = '';
-    document.getElementById('room-code').value = '';
+    updateSelectedCount();
 }
 
 // Создание комнаты
 function createRoom() {
     const hostName = document.getElementById('host-name').value.trim();
-    const roomName = document.getElementById('room-name').value.trim();
     const playerCount = parseInt(document.getElementById('player-count').value);
     
-    // Валидация
     if (!hostName) {
-        showNotification('Введите ваше имя', 'error');
+        alert('Введите ваше имя');
         return;
     }
     
-    if (!roomName) {
-        showNotification('Введите название комнаты', 'error');
-        return;
-    }
-    
-    if (hostName.length < 2 || hostName.length > 20) {
-        showNotification('Имя должно быть от 2 до 20 символов', 'error');
-        return;
-    }
-    
-    // Собираем выбранные роли
-    const selectedRoles = [];
-    document.querySelectorAll('.role-option').forEach(option => {
-        const role = option.dataset.role;
-        const count = parseInt(option.querySelector('.count').textContent);
-        
+    // Собираем роли
+    const roles = [];
+    Object.keys(ROLES).forEach(roleId => {
+        const count = parseInt(document.getElementById(`count-${roleId}`).textContent);
         for (let i = 0; i < count; i++) {
-            selectedRoles.push(role);
+            roles.push(roleId);
         }
     });
     
-    console.log('Создаем комнату с:', {
-        roomName,
-        playerCount,
-        selectedRoles,
-        selectedRolesCount: selectedRoles.length
-    });
-    
-    // Проверяем баланс ролей
-    if (selectedRoles.length !== playerCount) {
-        showNotification(`Количество ролей (${selectedRoles.length}) должно совпадать с количеством игроков (${playerCount})`, 'error');
+    // Проверяем баланс
+    if (roles.length !== playerCount) {
+        alert(`Выбрано ${roles.length} ролей, нужно ${playerCount}`);
         return;
     }
     
-    // Подключаемся к серверу через Socket.io
-    connectToServer();
-    
-    // Отправляем запрос на создание комнаты
     socket.emit('create-room', {
-        roomName: roomName,
+        playerName: hostName,
         playerCount: playerCount,
-        roles: selectedRoles,
-        playerName: hostName
+        roles: roles
     });
 }
 
 // Присоединение к комнате
 function joinRoom() {
     const playerName = document.getElementById('player-name').value.trim();
-    const roomCode = document.getElementById('room-code').value.trim().toUpperCase();
+    const roomCode = document.getElementById('room-code-input').value.trim().toUpperCase();
     
-    // Валидация
     if (!playerName) {
-        showNotification('Введите ваше имя', 'error');
+        alert('Введите ваше имя');
         return;
     }
     
-    if (!roomCode) {
-        showNotification('Введите код комнаты', 'error');
+    if (!roomCode || roomCode.length !== 4) {
+        alert('Введите код комнаты (4 символа)');
         return;
     }
     
-    if (playerName.length < 2 || playerName.length > 20) {
-        showNotification('Имя должно быть от 2 до 20 символов', 'error');
-        return;
-    }
-    
-    if (roomCode.length !== 6) {
-        showNotification('Код комнаты должен состоять из 6 символов', 'error');
-        return;
-    }
-    
-    // Подключаемся к серверу
-    connectToServer();
-    
-    // Отправляем запрос на присоединение
     socket.emit('join-room', {
-        roomId: roomCode,
+        roomCode: roomCode,
         playerName: playerName
     });
 }
 
-// Подключение к серверу через Socket.io
-function connectToServer() {
-    if (socket && socket.connected) {
-        return;
-    }
-    
-    // Устанавливаем соединение
-    socket = io(SERVER_URL, {
-        transports: ['websocket', 'polling'],
-        reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000
-    });
-    
-    // Обработчики событий Socket.io
-    socket.on('connect', () => {
-        console.log('Подключено к серверу');
-        document.getElementById('server-status').className = 'status-online';
-        document.getElementById('server-status').textContent = '● Онлайн';
-    });
-    
-    socket.on('disconnect', () => {
-        console.log('Отключено от сервера');
-        document.getElementById('server-status').className = 'status-offline';
-        document.getElementById('server-status').textContent = '● Офлайн';
-    });
-    
-    socket.on('connect_error', (error) => {
-        console.error('Ошибка подключения:', error);
-        showNotification('Не удалось подключиться к серверу', 'error');
-    });
-    
-    // Обработчики игровых событий
-    socket.on('room-created', (roomInfo) => {
-        console.log('Комната создана:', roomInfo);
-        handleRoomCreated(roomInfo);
-    });
-    
-    socket.on('room-joined', (roomInfo) => {
-        console.log('Присоединились к комнате:', roomInfo);
-        handleRoomJoined(roomInfo);
-    });
-    
-    socket.on('join-error', (data) => {
-        showNotification(data.message || 'Не удалось присоединиться к комнате', 'error');
-    });
-    
-    socket.on('player-joined', (data) => {
-        console.log('Новый игрок присоединился:', data);
-        updatePlayersList(data.players);
-    });
-    
-    socket.on('player-disconnected', (data) => {
-        console.log('Игрок отключился:', data);
-        updatePlayersList(data.players);
-    });
-    
-    socket.on('roles-shuffled', (roomInfo) => {
-        console.log('Роли перемешаны:', roomInfo);
-        handleRolesShuffled(roomInfo);
-    });
-    
-    socket.on('roles-revealed', (roomInfo) => {
-        console.log('Роли раскрыты:', roomInfo);
-        handleRolesRevealed(roomInfo);
-    });
-    
-    socket.on('game-started', () => {
-        showNotification('Игра началась! Роли разданы игрокам.', 'success');
-    });
-    
-    socket.on('new-host', (data) => {
-        console.log('Новый ведущий:', data);
-        if (currentPlayer && currentPlayer.id === data.hostId) {
-            isHost = true;
-            showNotification('Вы стали ведущим!', 'success');
-        }
-    });
-    
-    // Пинг для поддержания соединения
-    setInterval(() => {
-        if (socket && socket.connected) {
-            socket.emit('ping');
-        }
-    }, 30000);
+// Раздача ролей
+function dealRoles() {
+    socket.emit('deal-roles');
 }
 
-// Обработка создания комнаты
-function handleRoomCreated(roomInfo) {
-    currentRoom = roomInfo;
-    currentPlayer = {
-        name: document.getElementById('host-name').value.trim(),
-        isHost: true
-    };
-    isHost = true;
-    
-    console.log('Ведущий создал комнату:', currentRoom);
-    showHostGameScreen(roomInfo);
+// Показать роли всем
+function revealRoles() {
+    socket.emit('reveal-roles');
 }
 
-// Обработка присоединения к комнате
-function handleRoomJoined(roomInfo) {
-    currentRoom = roomInfo;
-    currentPlayer = {
-        name: document.getElementById('player-name').value.trim(),
-        isHost: roomInfo.isHost
-    };
-    isHost = roomInfo.isHost;
+// Выйти из комнаты
+function leaveRoom() {
+    socket.disconnect();
+    socket.connect();
+    showMainScreen();
+    showMessage('Вы вышли из комнаты', 'success');
+}
+
+// Показать сообщение
+function showMessage(text, type) {
+    const errorDiv = document.getElementById('error-message');
+    const successDiv = document.getElementById('success-message');
     
-    console.log('Игрок присоединился:', currentPlayer, 'Комната:', currentRoom);
-    
-    if (isHost) {
-        showHostGameScreen(roomInfo);
+    if (type === 'error') {
+        errorDiv.textContent = text;
+        errorDiv.classList.remove('hidden');
+        successDiv.classList.add('hidden');
+        
+        setTimeout(() => {
+            errorDiv.classList.add('hidden');
+        }, 5000);
     } else {
-        showPlayerGameScreen(roomInfo);
+        successDiv.textContent = text;
+        successDiv.classList.remove('hidden');
+        errorDiv.classList.add('hidden');
+        
+        setTimeout(() => {
+            successDiv.classList.add('hidden');
+        }, 5000);
     }
-}
-
-// Показать экран игры для ведущего
-function showHostGameScreen(roomInfo) {
-    document.querySelectorAll('.screen').forEach(screen => {
-        screen.style.display = 'none';
-    });
-    
-    document.getElementById('screen-game-host').style.display = 'block';
-    
-    // Заполняем информацию о комнате
-    document.getElementById('game-room-name').textContent = roomInfo.roomName;
-    document.getElementById('game-room-code').textContent = roomInfo.roomId;
-    document.getElementById('current-players').textContent = roomInfo.players.length;
-    document.getElementById('max-players').textContent = roomInfo.playerCount;
-    
-    // Генерируем ссылку для приглашения
-    const inviteLink = `${window.location.origin}?room=${roomInfo.roomId}`;
-    document.getElementById('invite-link').textContent = inviteLink;
-    
-    // Обновляем список игроков
-    updatePlayersList(roomInfo.players);
-    
-    // Активируем/деактивируем кнопки
-    const shuffleBtn = document.getElementById('shuffle-btn');
-    const revealBtn = document.getElementById('reveal-btn');
-    
-    if (roomInfo.players.length >= roomInfo.playerCount) {
-        shuffleBtn.disabled = false;
-        shuffleBtn.title = '';
-    } else {
-        shuffleBtn.disabled = true;
-        shuffleBtn.title = `Ждем еще ${roomInfo.playerCount - roomInfo.players.length} игроков`;
-    }
-    
-    revealBtn.disabled = !roomInfo.gameStarted;
-}
-
-// Показать экран игры для игрока
-function showPlayerGameScreen(roomInfo) {
-    document.querySelectorAll('.screen').forEach(screen => {
-        screen.style.display = 'none';
-    });
-    
-    document.getElementById('screen-game-player').style.display = 'block';
-    
-    // Заполняем информацию о комнате
-    document.getElementById('player-room-name').textContent = roomInfo.roomName;
-    document.getElementById('player-room-code').textContent = roomInfo.roomId;
-    document.getElementById('player-current-players').textContent = roomInfo.players.length;
-    document.getElementById('player-max-players').textContent = roomInfo.playerCount;
-    
-    // Заполняем информацию об игроке
-    document.getElementById('display-player-name').textContent = currentPlayer.name;
-    
-    // Обновляем роль игрока
-    updatePlayerRole(roomInfo.playerRole, roomInfo.revealed);
-    
-    // Обновляем список игроков
-    updatePlayersList(roomInfo.players);
 }
 
 // Обновление списка игроков
 function updatePlayersList(players) {
-    console.log('Обновление списка игроков:', players);
-    
-    // Для ведущего
-    const hostList = document.getElementById('players-list-host');
-    const playerList = document.getElementById('players-list-player');
-    
-    if (hostList) {
-        updatePlayersListElement(hostList, players, true);
-    }
-    
-    if (playerList) {
-        updatePlayersListElement(playerList, players, false);
-    }
-    
-    // Обновляем счетчики игроков
-    if (currentRoom) {
-        const currentPlayersElement = document.getElementById('current-players');
-        const playerCurrentPlayersElement = document.getElementById('player-current-players');
-        
-        if (currentPlayersElement) {
-            currentPlayersElement.textContent = players.length;
-        }
-        
-        if (playerCurrentPlayersElement) {
-            playerCurrentPlayersElement.textContent = players.length;
-        }
-        
-        // Обновляем состояние кнопки "Раздать роли"
-        const shuffleBtn = document.getElementById('shuffle-btn');
-        if (shuffleBtn) {
-            if (players.length >= currentRoom.playerCount) {
-                shuffleBtn.disabled = false;
-                shuffleBtn.title = '';
-                console.log('Кнопка "Раздать роли" активирована');
-            } else {
-                shuffleBtn.disabled = true;
-                shuffleBtn.title = `Ждем еще ${currentRoom.playerCount - players.length} игроков`;
-                console.log(`Ждем еще ${currentRoom.playerCount - players.length} игроков`);
-            }
-        }
-    }
-}
-
-// Обновление элемента списка игроков
-function updatePlayersListElement(element, players, showRoles) {
-    element.innerHTML = '';
-    
-    if (players.length === 0) {
-        element.innerHTML = `
-            <div class="empty-state">
-                <i class="fas fa-user-clock"></i>
-                <p>Ожидание игроков...</p>
-            </div>
-        `;
-        return;
-    }
+    const container = document.getElementById('players-list');
+    container.innerHTML = '';
     
     players.forEach(player => {
-        const playerCard = document.createElement('div');
-        playerCard.className = 'player-card';
+        const div = document.createElement('div');
+        div.className = 'player';
         
-        // Определяем роль для отображения
-        let roleDisplay = '';
-        if (showRoles || (currentRoom && currentRoom.revealed) || (currentPlayer && player.id === currentPlayer.id)) {
-            if (player.role) {
-                const roleName = getRoleName(player.role);
-                const roleColor = getRoleColor(player.role);
-                roleDisplay = `<div class="player-role" style="color: ${roleColor}">${roleName}</div>`;
-                console.log(`Показываем роль для ${player.name}: ${roleName}`);
-            } else {
-                roleDisplay = '<div class="player-role">ожидание...</div>';
-            }
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = player.name + (player.isHost ? ' 👑' : '');
+        
+        const roleSpan = document.createElement('span');
+        
+        if (player.role) {
+            const roleInfo = ROLES[player.role];
+            roleSpan.textContent = roleInfo.name;
+            roleSpan.className = `role ${roleInfo.className}`;
         } else {
-            roleDisplay = '<div class="player-role">скрыта</div>';
+            roleSpan.textContent = 'ожидает...';
         }
         
-        // Определяем аватар
-        const avatarIcon = player.isHost ? 'fas fa-crown' : 'fas fa-user';
-        const avatarColor = player.isHost ? '#ffc107' : '#ff6b6b';
-        
-        playerCard.innerHTML = `
-            <div class="player-avatar" style="background: ${avatarColor}">
-                <i class="${avatarIcon}"></i>
-            </div>
-            <div class="player-details">
-                <div class="player-name">
-                    ${player.name}
-                    ${player.isHost ? '<span class="player-host-badge">Ведущий</span>' : ''}
-                    ${currentPlayer && player.id === currentPlayer.id ? '<span class="player-host-badge">Вы</span>' : ''}
-                </div>
-                ${roleDisplay}
-            </div>
-        `;
-        
-        element.appendChild(playerCard);
+        div.appendChild(nameSpan);
+        div.appendChild(roleSpan);
+        container.appendChild(div);
     });
-}
-
-// Обновление роли игрока
-function updatePlayerRole(role, revealed) {
-    const roleDisplay = document.getElementById('player-role-display');
     
-    if (!roleDisplay) return;
-    
-    if (!role || (!revealed && !isHost)) {
-        roleDisplay.textContent = 'ожидание...';
-        roleDisplay.style.color = '';
-        console.log('Роль игрока: ожидание...');
-        return;
-    }
-    
-    const roleName = getRoleName(role);
-    const roleColor = getRoleColor(role);
-    
-    roleDisplay.textContent = roleName;
-    roleDisplay.style.color = roleColor;
-    console.log(`Роль игрока установлена: ${roleName}`);
-}
-
-// Получение названия роли
-function getRoleName(roleId) {
-    const roleNames = {
-        'mafia': 'Мафия',
-        'civilian': 'Мирный житель',
-        'sheriff': 'Шериф',
-        'don': 'Дон мафии',
-        'doctor': 'Доктор',
-        'maniac': 'Маньяк',
-        'courtesan': 'Куртизанка'
-    };
-    
-    return roleNames[roleId] || roleId;
-}
-
-// Получение цвета роли
-function getRoleColor(roleId) {
-    const roleColors = {
-        'mafia': '#e94560',
-        'civilian': '#8ac6d1',
-        'sheriff': '#4cc9f0',
-        'don': '#b30000',
-        'doctor': '#6fffb0',
-        'maniac': '#ff9a00',
-        'courtesan': '#ff6bcb'
-    };
-    
-    return roleColors[roleId] || '#ffffff';
-}
-
-// Перемешивание ролей
-function shuffleRoles() {
-    if (!socket || !socket.connected) {
-        showNotification('Нет соединения с сервером', 'error');
-        return;
-    }
-    
-    if (!isHost) {
-        showNotification('Только ведущий может раздавать роли', 'error');
-        return;
-    }
-    
-    console.log('Запрос на перемешивание ролей');
-    socket.emit('shuffle-roles');
-}
-
-// Раскрытие ролей
-function revealRoles() {
-    if (!socket || !socket.connected) {
-        showNotification('Нет соединения с сервером', 'error');
-        return;
-    }
-    
-    if (!isHost) {
-        showNotification('Только ведущий может показывать роли', 'error');
-        return;
-    }
-    
-    console.log('Запрос на раскрытие ролей');
-    socket.emit('reveal-roles');
-}
-
-// Обработка перемешивания ролей
-function handleRolesShuffled(roomInfo) {
-    console.log('Обработка перемешанных ролей:', roomInfo);
-    currentRoom = roomInfo;
-    updatePlayersList(roomInfo.players);
-    
-    // Обновляем кнопки
+    // Обновляем кнопки для ведущего
+    const dealBtn = document.getElementById('deal-btn');
     const revealBtn = document.getElementById('reveal-btn');
-    if (revealBtn) {
-        revealBtn.disabled = false;
-    }
+    const hostControls = document.getElementById('host-controls');
     
-    // Для игроков обновляем их роль
-    if (!isHost) {
-        updatePlayerRole(roomInfo.playerRole, roomInfo.revealed);
-    }
-}
-
-// Обработка раскрытия ролей
-function handleRolesRevealed(roomInfo) {
-    console.log('Обработка раскрытых ролей:', roomInfo);
-    currentRoom = roomInfo;
-    updatePlayersList(roomInfo.players);
-    
-    // Для игроков обновляем их роль
-    if (!isHost) {
-        updatePlayerRole(roomInfo.playerRole, roomInfo.revealed);
+    if (isHost) {
+        hostControls.classList.remove('hidden');
+        dealBtn.disabled = players.length !== currentRoom.playerCount;
+        dealBtn.textContent = players.length === currentRoom.playerCount 
+            ? 'Раздать роли' 
+            : `Ждем еще ${currentRoom.playerCount - players.length} игроков`;
+    } else {
+        hostControls.classList.add('hidden');
     }
 }
 
-// Копирование ссылки для приглашения
-function copyInviteLink() {
-    const inviteLink = document.getElementById('invite-link').textContent;
-    
-    navigator.clipboard.writeText(inviteLink).then(() => {
-        showNotification('Ссылка скопирована в буфер обмена!', 'success');
-    }).catch(err => {
-        showNotification('Не удалось скопировать ссылку', 'error');
-        console.error('Ошибка копирования:', err);
-    });
-}
+// Обработчики Socket.io
+socket.on('connect', () => {
+    console.log('Подключено к серверу');
+});
 
-// Выход из комнаты
-function leaveRoom() {
-    console.log('Выход из комнаты');
+socket.on('room-created', (data) => {
+    currentRoom = { code: data.roomCode, players: data.players };
+    isHost = true;
     
-    if (socket) {
-        socket.disconnect();
-    }
+    document.getElementById('room-name-display').textContent = 'Ведущий';
+    document.getElementById('room-code-display').textContent = `Код комнаты: ${data.roomCode}`;
     
-    currentRoom = null;
-    currentPlayer = null;
-    isHost = false;
-    
-    showMainScreen();
-    showNotification('Вы вышли из комнаты', 'info');
-}
+    showGameScreen();
+    updatePlayersList(data.players);
+    showMessage('Комната создана! Отправьте код игрокам', 'success');
+});
 
-// Показать уведомление
-function showNotification(message, type) {
-    const notification = document.getElementById('notification');
-    
-    if (!notification) {
-        console.log('Уведомление:', message, type);
-        return;
+socket.on('player-joined', (data) => {
+    if (currentRoom) {
+        currentRoom.players = data.players;
+        updatePlayersList(data.players);
+        showMessage('Новый игрок присоединился', 'success');
     }
-    
-    notification.textContent = message;
-    notification.className = `notification ${type}`;
-    notification.style.display = 'block';
-    
-    // Автоматически скрываем уведомление через 5 секунд
-    setTimeout(() => {
-        notification.style.display = 'none';
-    }, 5000);
-}
+});
 
-// Обновление статистики сервера
-async function updateServerStats() {
-    try {
-        const response = await fetch(`${SERVER_URL}/api/stats`);
-        const data = await response.json();
-        
-        const roomCountElement = document.getElementById('room-count');
-        const playerCountElement = document.getElementById('player-count');
-        
-        if (roomCountElement) {
-            roomCountElement.textContent = data.totalRooms;
-        }
-        
-        if (playerCountElement) {
-            playerCountElement.textContent = data.totalPlayers;
-        }
-    } catch (error) {
-        console.error('Ошибка получения статистики:', error);
+socket.on('player-left', (data) => {
+    if (currentRoom) {
+        currentRoom.players = data.players;
+        updatePlayersList(data.players);
     }
-}
+});
 
-// Проверка параметров URL
-function checkUrlParams() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const roomCode = urlParams.get('room');
+socket.on('new-host', (data) => {
+    showMessage(`${data.hostName} теперь ведущий`, 'success');
+    isHost = socket.id === data.hostName;
+});
+
+socket.on('role-assigned', (data) => {
+    myRole = data.role;
     
-    if (roomCode && roomCode.length === 6) {
-        document.getElementById('room-code').value = roomCode.toUpperCase();
-        showJoinRoom();
+    // Показываем свою роль
+    const roleInfo = ROLES[myRole];
+    document.getElementById('your-role').textContent = roleInfo.name;
+    document.getElementById('your-role').className = roleInfo.className;
+    document.getElementById('player-info').classList.remove('hidden');
+    
+    // Обновляем список игроков
+    updatePlayersList(data.players);
+    
+    if (isHost) {
+        showMessage('Роли разданы!', 'success');
+        document.getElementById('reveal-btn').disabled = false;
+    } else {
+        showMessage('Вам выдана роль!', 'success');
     }
-}
+});
+
+socket.on('roles-revealed', (data) => {
+    // Показываем все роли
+    updatePlayersList(data.players.map(p => ({
+        ...p,
+        role: p.role // теперь у всех видна роль
+    })));
+    
+    showMessage('Все роли раскрыты!', 'success');
+});
+
+socket.on('error', (data) => {
+    showMessage(data.message, 'error');
+});
