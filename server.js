@@ -20,17 +20,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Хранилище комнат
 const rooms = new Map();
 
-// Роли для игры
-const ROLES = {
-  MAFIA: { id: 'mafia', name: 'Мафия', color: '#e94560' },
-  CIVILIAN: { id: 'civilian', name: 'Мирный житель', color: '#8ac6d1' },
-  SHERIFF: { id: 'sheriff', name: 'Шериф', color: '#4cc9f0' },
-  DON: { id: 'don', name: 'Дон мафии', color: '#b30000' },
-  DOCTOR: { id: 'doctor', name: 'Доктор', color: '#6fffb0' },
-  MANIAC: { id: 'maniac', name: 'Маньяк', color: '#ff9a00' },
-  COURTESAN: { id: 'courtesan', name: 'Куртизанка', color: '#ff6bcb' }
-};
-
 // Генерация ID комнаты
 function generateRoomId() {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -58,21 +47,29 @@ function createRoom(roomName, hostName, playerCount, selectedRoles) {
   };
   
   rooms.set(roomId, room);
+  console.log(`Создана комната ${roomId}: "${roomName}" на ${playerCount} игроков`);
   return roomId;
 }
 
 // Подключение игрока к комнате
 function joinRoom(roomId, playerName, socketId) {
   const room = rooms.get(roomId);
-  if (!room) return null;
+  if (!room) {
+    console.log(`Комната ${roomId} не найдена`);
+    return null;
+  }
   
   if (room.players.size >= room.playerCount) {
-    return null; // Комната заполнена
+    console.log(`Комната ${roomId} заполнена (${room.players.size}/${room.playerCount})`);
+    return null;
   }
   
   // Проверяем, нет ли игрока с таким именем
   for (let player of room.players.values()) {
-    if (player.name === playerName) return null;
+    if (player.name === playerName) {
+      console.log(`Игрок с именем "${playerName}" уже есть в комнате ${roomId}`);
+      return null;
+    }
   }
   
   const playerId = generatePlayerId();
@@ -91,37 +88,11 @@ function joinRoom(roomId, playerName, socketId) {
   if (room.players.size === 1) {
     player.isHost = true;
     room.hostId = playerId;
+    console.log(`Игрок ${playerName} назначен ведущим комнаты ${roomId}`);
   }
   
+  console.log(`Игрок ${playerName} присоединился к комнате ${roomId} (${room.players.size}/${room.playerCount})`);
   return { playerId, room };
-}
-
-// Перемешивание ролей
-function shuffleRoles(roomId) {
-  const room = rooms.get(roomId);
-  if (!room) return false;
-  
-  if (room.players.size < room.playerCount) return false;
-  
-  // Создаем массив ролей
-  const rolesArray = [...room.roles];
-  
-  // Перемешиваем роли
-  for (let i = rolesArray.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [rolesArray[i], rolesArray[j]] = [rolesArray[j], rolesArray[i]];
-  }
-  
-  // Раздаем роли игрокам
-  const players = Array.from(room.players.values());
-  players.forEach((player, index) => {
-    player.role = rolesArray[index];
-  });
-  
-  room.gameStarted = true;
-  room.revealed = false;
-  
-  return true;
 }
 
 // Получение информации о комнате для игрока
@@ -138,6 +109,7 @@ function getRoomInfoForPlayer(roomId, playerId) {
     name: p.name,
     isHost: p.isHost,
     connected: p.connected,
+    // Показываем роль если: раскрыты роли ИЛИ это ведущий ИЛИ это сам игрок
     role: (room.revealed || player.isHost || p.id === playerId) ? p.role : null
   }));
   
@@ -146,7 +118,7 @@ function getRoomInfoForPlayer(roomId, playerId) {
     roomName: room.name,
     playerCount: room.playerCount,
     players: players,
-    playerRole: player.role,
+    playerRole: player.role, // Всегда отправляем роль текущему игроку
     isHost: player.isHost,
     revealed: room.revealed,
     gameStarted: room.gameStarted
@@ -161,9 +133,10 @@ setInterval(() => {
   for (let [roomId, room] of rooms.entries()) {
     if (now - room.createdAt > hours24) {
       rooms.delete(roomId);
+      console.log(`Удалена старая комната: ${roomId}`);
     }
   }
-}, 60 * 60 * 1000); // Каждый час
+}, 60 * 60 * 1000);
 
 // Socket.io обработчики
 io.on('connection', (socket) => {
@@ -171,10 +144,18 @@ io.on('connection', (socket) => {
   
   // Создание комнаты
   socket.on('create-room', (data) => {
+    console.log('Запрос на создание комнаты:', data);
     const { roomName, playerCount, roles, playerName } = data;
     
     const roomId = createRoom(roomName, playerName, playerCount, roles);
-    const { playerId, room } = joinRoom(roomId, playerName, socket.id);
+    const joinResult = joinRoom(roomId, playerName, socket.id);
+    
+    if (!joinResult) {
+      socket.emit('join-error', { message: 'Не удалось создать комнату' });
+      return;
+    }
+    
+    const { playerId, room } = joinResult;
     
     socket.join(roomId);
     socket.roomId = roomId;
@@ -184,11 +165,12 @@ io.on('connection', (socket) => {
     const roomInfo = getRoomInfoForPlayer(roomId, playerId);
     socket.emit('room-created', roomInfo);
     
-    console.log(`Комната создана: ${roomId} (${roomName})`);
+    console.log(`Комната создана: ${roomId} (${roomName}) для ${playerCount} игроков`);
   });
   
   // Присоединение к комнате
   socket.on('join-room', (data) => {
+    console.log('Запрос на присоединение к комнате:', data);
     const { roomId, playerName } = data;
     
     const joinResult = joinRoom(roomId, playerName, socket.id);
@@ -225,27 +207,57 @@ io.on('connection', (socket) => {
     const roomId = socket.roomId;
     const playerId = socket.playerId;
     
+    console.log(`Запрос на перемешивание ролей от игрока ${playerId} в комнате ${roomId}`);
+    
     if (!roomId || !playerId) return;
     
     const room = rooms.get(roomId);
     if (!room) return;
     
     const player = room.players.get(playerId);
-    if (!player || !player.isHost) return;
-    
-    const success = shuffleRoles(roomId);
-    if (success) {
-      // Отправляем обновленную информацию всем игрокам
-      for (let [pId, p] of room.players.entries()) {
-        const playerSocket = io.sockets.sockets.get(p.socketId);
-        if (playerSocket) {
-          const roomInfo = getRoomInfoForPlayer(roomId, pId);
-          playerSocket.emit('roles-shuffled', roomInfo);
-        }
-      }
-      
-      io.to(roomId).emit('game-started');
+    if (!player || !player.isHost) {
+      console.log(`Игрок ${playerId} не является ведущим`);
+      return;
     }
+    
+    // Проверяем, что все игроки на месте
+    if (room.players.size < room.playerCount) {
+      console.log(`Не хватает игроков: ${room.players.size}/${room.playerCount}`);
+      return;
+    }
+    
+    // Создаем массив ролей
+    const rolesArray = [...room.roles];
+    console.log(`Роли для раздачи: ${rolesArray.join(', ')}`);
+    
+    // Перемешиваем роли
+    for (let i = rolesArray.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [rolesArray[i], rolesArray[j]] = [rolesArray[j], rolesArray[i]];
+    }
+    
+    // Раздаем роли игрокам
+    const players = Array.from(room.players.values());
+    console.log(`Игроки в комнате: ${players.map(p => p.name).join(', ')}`);
+    
+    players.forEach((player, index) => {
+      player.role = rolesArray[index];
+      console.log(`Игроку ${player.name} выдана роль: ${rolesArray[index]}`);
+    });
+    
+    room.gameStarted = true;
+    room.revealed = false;
+    
+    // Отправляем обновленную информацию КАЖДОМУ игроку отдельно
+    for (let [pId, p] of room.players.entries()) {
+      const playerSocket = io.sockets.sockets.get(p.socketId);
+      if (playerSocket) {
+        const roomInfo = getRoomInfoForPlayer(roomId, pId);
+        playerSocket.emit('roles-shuffled', roomInfo);
+      }
+    }
+    
+    console.log(`Роли разданы в комнате ${roomId}`);
   });
   
   // Раскрытие ролей
@@ -253,17 +265,27 @@ io.on('connection', (socket) => {
     const roomId = socket.roomId;
     const playerId = socket.playerId;
     
+    console.log(`Запрос на раскрытие ролей от игрока ${playerId} в комнате ${roomId}`);
+    
     if (!roomId || !playerId) return;
     
     const room = rooms.get(roomId);
     if (!room) return;
     
     const player = room.players.get(playerId);
-    if (!player || !player.isHost) return;
+    if (!player || !player.isHost) {
+      console.log(`Игрок ${playerId} не является ведущим`);
+      return;
+    }
+    
+    if (!room.gameStarted) {
+      console.log('Игра еще не начата, роли не разданы');
+      return;
+    }
     
     room.revealed = true;
     
-    // Отправляем обновленную информацию всем игрокам
+    // Отправляем обновленную информацию ВСЕМ игрокам
     for (let [pId, p] of room.players.entries()) {
       const playerSocket = io.sockets.sockets.get(p.socketId);
       if (playerSocket) {
@@ -271,6 +293,8 @@ io.on('connection', (socket) => {
         playerSocket.emit('roles-revealed', roomInfo);
       }
     }
+    
+    console.log(`Роли раскрыты в комнате ${roomId}`);
   });
   
   // Отключение игрока
@@ -288,6 +312,7 @@ io.on('connection', (socket) => {
     const player = room.players.get(playerId);
     if (player) {
       player.connected = false;
+      console.log(`Игрок ${player.name} отключился от комнаты ${roomId}`);
       
       // Если отключился ведущий, назначаем нового
       if (player.isHost && room.players.size > 1) {
@@ -296,6 +321,8 @@ io.on('connection', (socket) => {
           const newHost = connectedPlayers[0];
           newHost.isHost = true;
           room.hostId = newHost.id;
+          
+          console.log(`Новый ведущий: ${newHost.name}`);
           
           // Оповещаем о новом ведущем
           io.to(roomId).emit('new-host', { hostId: newHost.id });
@@ -338,9 +365,19 @@ app.get('/api/rooms/:roomId', (req, res) => {
 });
 
 app.get('/api/stats', (req, res) => {
+  const totalPlayers = Array.from(rooms.values()).reduce((sum, room) => sum + room.players.size, 0);
+  
   res.json({
     totalRooms: rooms.size,
-    totalPlayers: Array.from(rooms.values()).reduce((sum, room) => sum + room.players.size, 0)
+    totalPlayers: totalPlayers
+  });
+});
+
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    rooms: rooms.size,
+    uptime: process.uptime()
   });
 });
 
