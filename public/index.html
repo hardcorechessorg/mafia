@@ -1,235 +1,46 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Раздатчик карт для Мафии</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #f0f0f0;
-        }
-        
-        .screen {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        
-        .hidden {
-            display: none;
-        }
-        
-        h2 {
-            color: #333;
-            border-bottom: 2px solid #4CAF50;
-            padding-bottom: 10px;
-        }
-        
-        input, select, button {
-            width: 100%;
-            padding: 10px;
-            margin: 10px 0;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            box-sizing: border-box;
-        }
-        
-        button {
-            background: #4CAF50;
-            color: white;
-            border: none;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        
-        button:hover {
-            background: #45a049;
-        }
-        
-        button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-        
-        .player-list {
-            margin: 20px 0;
-            padding: 10px;
-            background: #f9f9f9;
-            border-radius: 5px;
-        }
-        
-        .player {
-            padding: 10px;
-            margin: 5px 0;
-            background: white;
-            border-radius: 5px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .role {
-            padding: 5px 10px;
-            border-radius: 15px;
-            font-weight: bold;
-            font-size: 0.9em;
-        }
-        
-        .role-mafia { background: #ffcccc; color: #cc0000; }
-        .role-civilian { background: #cce5ff; color: #0066cc; }
-        .role-sheriff { background: #ccffcc; color: #006600; }
-        .role-doctor { background: #e6ccff; color: #6600cc; }
-        .role-don { background: #ffcc99; color: #cc6600; }
-        
-        .error {
-            background: #ffcccc;
-            color: #cc0000;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
-        }
-        
-        .success {
-            background: #ccffcc;
-            color: #006600;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
-        }
-        
-        .controls {
-            display: flex;
-            gap: 10px;
-            margin-top: 20px;
-        }
-        
-        .controls button {
-            flex: 1;
-        }
-        
-        .room-code {
-            font-size: 1.5em;
-            font-weight: bold;
-            color: #4CAF50;
-            text-align: center;
-            margin: 20px 0;
-        }
-        
-        .role-selector {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 10px;
-            margin: 10px 0;
-        }
-        
-        .role-option {
-            padding: 10px;
-            border: 2px solid #ddd;
-            border-radius: 5px;
-            cursor: pointer;
-            text-align: center;
-        }
-        
-        .role-option.selected {
-            border-color: #4CAF50;
-            background: #f0fff0;
-        }
-        
-        .counter {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            justify-content: center;
-        }
-        
-        .counter button {
-            width: 30px;
-            height: 30px;
-            padding: 0;
-        }
-        
-        .counter span {
-            font-weight: bold;
-            min-width: 30px;
-            text-align: center;
-        }
-    </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mafia Game Setup</title>
+<link rel="stylesheet" href="style.css" />
 </head>
 <body>
-    <div id="main-screen" class="screen">
-        <h2>🎭 Раздатчик карт для Мафии</h2>
-        <button onclick="showCreateScreen()">Создать комнату</button>
-        <button onclick="showJoinScreen()">Присоединиться</button>
-    </div>
-    
-    <div id="create-screen" class="screen hidden">
-        <h2>Создание комнаты</h2>
-        
-        <input type="text" id="host-name" placeholder="Ваше имя" maxlength="20">
-        
-        <select id="player-count">
-            <option value="6">6 игроков</option>
-            <option value="7">7 игроков</option>
-            <option value="8" selected>8 игроков</option>
-            <option value="9">9 игроков</option>
-            <option value="10">10 игроков</option>
-        </select>
-        
-        <h3>Выберите роли:</h3>
-        <div id="role-selection">
-            <!-- Роли будут добавлены через JS -->
-        </div>
-        
-        <div class="counter">
-            <div>Выбрано: <span id="selected-count">0</span>/<span id="total-count">8</span></div>
-            <button onclick="autoBalance()">Автобаланс</button>
-        </div>
-        
-        <button onclick="createRoom()">Создать комнату</button>
-        <button onclick="showMainScreen()">Назад</button>
-    </div>
-    
-    <div id="join-screen" class="screen hidden">
-        <h2>Присоединение к комнате</h2>
-        
-        <input type="text" id="player-name" placeholder="Ваше имя" maxlength="20">
-        <input type="text" id="room-code-input" placeholder="Код комнаты (4 буквы)" maxlength="4" style="text-transform: uppercase;">
-        
-        <button onclick="joinRoom()">Присоединиться</button>
-        <button onclick="showMainScreen()">Назад</button>
-    </div>
-    
-    <div id="game-screen" class="screen hidden">
-        <h2>Комната: <span id="room-name-display"></span></h2>
-        <div class="room-code" id="room-code-display"></div>
-        
-        <div id="error-message" class="error hidden"></div>
-        <div id="success-message" class="success hidden"></div>
-        
-        <h3>Игроки:</h3>
-        <div id="players-list" class="player-list">
-            <!-- Игроки будут добавлены через JS -->
-        </div>
-        
-        <div id="host-controls" class="controls hidden">
-            <button id="deal-btn" onclick="dealRoles()">Раздать роли</button>
-            <button id="reveal-btn" onclick="revealRoles()" disabled>Показать все роли</button>
-        </div>
-        
-        <div id="player-info" class="hidden">
-            <h3>Ваша роль: <span id="your-role"></span></h3>
-        </div>
-        
-        <button onclick="leaveRoom()">Выйти из комнаты</button>
-    </div>
-    
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="script.js"></script>
+<div class="container">
+<h1>Настройка игры Мафия</h1>
+
+
+<div class="roles-block">
+<label>Количество Мафии:</label>
+<input type="number" id="mafiaCount" value="1" min="0" />
+
+
+<label>Количество Шерифов:</label>
+<input type="number" id="sheriffCount" value="1" min="0" />
+
+
+<label>Количество Докторов:</label>
+<input type="number" id="doctorCount" value="1" min="0" />
+
+
+<label>Количество Киллеров:</label>
+<input type="number" id="killerCount" value="0" min="0" />
+
+
+<label>Количество Мирных:</label>
+<input type="number" id="civilCount" value="5" min="0" />
+</div>
+
+
+<button id="generateBtn">Сгенерировать роли</button>
+
+
+<h2>Результат:</h2>
+<pre id="result"></pre>
+</div>
+
+
+<script src="game.js"></script>
 </body>
 </html>
