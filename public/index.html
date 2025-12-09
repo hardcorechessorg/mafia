@@ -77,7 +77,7 @@
                     </div>
                     
                     <div class="form-group">
-                        <label for="player-count"><i class="fas fa-users"></i> Количество игроков</label>
+                        <label for="player-count-select"><i class="fas fa-users"></i> Количество игроков</label>
                         <select id="player-count">
                             <option value="6">6 игроков</option>
                             <option value="7">7 игроков</option>
@@ -128,6 +128,18 @@
                                 </div>
                             </div>
                             
+                            <div class="role-option" data-role="doctor">
+                                <div class="role-icon" style="background-color: #6fffb0;">Д</div>
+                                <div class="role-info">
+                                    <div class="role-name">Доктор</div>
+                                    <div class="role-count">
+                                        <button class="count-btn minus">-</button>
+                                        <span class="count">1</span>
+                                        <button class="count-btn plus">+</button>
+                                    </div>
+                                </div>
+                            </div>
+                            
                             <div class="role-option" data-role="don">
                                 <div class="role-icon" style="background-color: #b30000;">Д</div>
                                 <div class="role-info">
@@ -140,13 +152,25 @@
                                 </div>
                             </div>
                             
-                            <div class="role-option" data-role="doctor">
-                                <div class="role-icon" style="background-color: #6fffb0;">Д</div>
+                            <div class="role-option" data-role="maniac">
+                                <div class="role-icon" style="background-color: #ff9a00;">У</div>
                                 <div class="role-info">
-                                    <div class="role-name">Доктор</div>
+                                    <div class="role-name">Маньяк</div>
                                     <div class="role-count">
                                         <button class="count-btn minus">-</button>
-                                        <span class="count">1</span>
+                                        <span class="count">0</span>
+                                        <button class="count-btn plus">+</button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="role-option" data-role="courtesan">
+                                <div class="role-icon" style="background-color: #ff6bcb;">К</div>
+                                <div class="role-info">
+                                    <div class="role-name">Куртизанка</div>
+                                    <div class="role-count">
+                                        <button class="count-btn minus">-</button>
+                                        <span class="count">0</span>
                                         <button class="count-btn plus">+</button>
                                     </div>
                                 </div>
@@ -157,6 +181,9 @@
                             <div>Выбрано ролей: <span id="selected-roles-count">8</span></div>
                             <div>Необходимо: <span id="required-roles-count">8</span></div>
                             <div id="role-balance" class="balanced">✓ Сбалансировано</div>
+                            <button class="btn btn-small" onclick="autoBalanceRoles()" style="margin-top: 10px;">
+                                <i class="fas fa-magic"></i> Автобалансировка
+                            </button>
                         </div>
                     </div>
                     
@@ -227,7 +254,6 @@
                     <div class="players-section">
                         <h3><i class="fas fa-users"></i> Игроки в комнате</h3>
                         <div class="players-list" id="players-list-host">
-                            <!-- Список игроков будет заполняться здесь -->
                             <div class="empty-state">
                                 <i class="fas fa-user-clock"></i>
                                 <p>Ожидание игроков...</p>
@@ -282,7 +308,6 @@
                     <div class="players-section">
                         <h3><i class="fas fa-users"></i> Игроки в комнате</h3>
                         <div class="players-list" id="players-list-player">
-                            <!-- Список игроков будет заполняться здесь -->
                             <div class="empty-state">
                                 <i class="fas fa-user-clock"></i>
                                 <p>Ожидание игроков...</p>
@@ -300,7 +325,7 @@
         </main>
 
         <footer class="footer">
-            <p> Онлайн раздатчик карт для игры в Мафию | Сервер: <span id="server-status" class="status-online">● Онлайн</span></p>
+            <p>Онлайн раздатчик карт для игры в Мафию | Сервер: <span id="server-status" class="status-online">● Онлайн</span></p>
         </footer>
     </div>
 

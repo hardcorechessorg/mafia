@@ -12,7 +12,7 @@ let isHost = false;
 // Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
     updateServerStats();
-    setInterval(updateServerStats, 30000); // Обновляем статистику каждые 30 секунд
+    setInterval(updateServerStats, 30000);
     
     // Инициализируем выбор ролей
     initRoleSelection();
@@ -20,9 +20,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Проверяем наличие кода комнаты в URL
     checkUrlParams();
     
-    // Устанавливаем дефолтные роли для 8 игроков
-    setDefaultRoles(8);
-    updateRequiredRolesCount();
+    // Инициализируем отображение
+    updateRequiredRolesDisplay();
 });
 
 // Инициализация выбора ролей
@@ -45,32 +44,38 @@ function initRoleSelection() {
         });
     });
     
-    // Обновляем статистику при изменении количества игроков
+    // Обновляем при изменении количества игроков
     const playerCountSelect = document.getElementById('player-count');
     if (playerCountSelect) {
         playerCountSelect.addEventListener('change', function() {
             const playerCount = parseInt(this.value);
-            console.log('Изменено количество игроков на:', playerCount);
+            console.log('Количество игроков изменено на:', playerCount);
+            
+            // Обновляем отображение "Необходимо"
+            updateRequiredRolesDisplay();
+            
+            // Устанавливаем роли по умолчанию
             setDefaultRoles(playerCount);
-            updateRequiredRolesCount();
+            
+            // Проверяем баланс
+            checkRoleBalance();
         });
     }
 }
 
-// Функция обновления требуемого количества ролей
-function updateRequiredRolesCount() {
+// Обновление отображения "Необходимо"
+function updateRequiredRolesDisplay() {
     const playerCountSelect = document.getElementById('player-count');
     const requiredCountElement = document.getElementById('required-roles-count');
     
     if (playerCountSelect && requiredCountElement) {
         const playerCount = parseInt(playerCountSelect.value);
         requiredCountElement.textContent = playerCount;
-        console.log('Обновлено необходимое количество ролей:', playerCount);
-        checkRoleBalance();
+        console.log('"Необходимо" обновлено на:', playerCount);
     }
 }
 
-// Функция для установки ролей по умолчанию в зависимости от количества игроков
+// Установка ролей по умолчанию
 function setDefaultRoles(playerCount) {
     const rolesConfig = {
         6: { mafia: 1, civilian: 4, sheriff: 1, doctor: 0, don: 0, maniac: 0, courtesan: 0 },
@@ -84,23 +89,21 @@ function setDefaultRoles(playerCount) {
     
     const config = rolesConfig[playerCount] || rolesConfig[8];
     
-    console.log(`Устанавливаем роли для ${playerCount} игроков:`, config);
+    console.log(`Установка ролей для ${playerCount} игроков:`, config);
     
     // Устанавливаем значения для каждой роли
-    const roles = ['mafia', 'civilian', 'sheriff', 'doctor', 'don', 'maniac', 'courtesan'];
-    roles.forEach(role => {
+    ['mafia', 'civilian', 'sheriff', 'doctor', 'don', 'maniac', 'courtesan'].forEach(role => {
         const option = document.querySelector(`.role-option[data-role="${role}"]`);
         if (option) {
             const count = config[role] || 0;
             option.querySelector('.count').textContent = count;
-            console.log(`Роль ${role}: ${count}`);
         }
     });
     
     checkRoleBalance();
 }
 
-// Функция проверки баланса ролей
+// Проверка баланса ролей
 function checkRoleBalance() {
     const playerCountElement = document.getElementById('player-count');
     const playerCount = playerCountElement ? parseInt(playerCountElement.value) : 8;
@@ -113,18 +116,10 @@ function checkRoleBalance() {
         selectedRoles += count;
     });
     
-    console.log(`Проверка баланса: выбрано ${selectedRoles}, нужно ${playerCount}`);
-    
-    // Обновляем отображение
+    // Обновляем "Выбрано ролей"
     const selectedCountElement = document.getElementById('selected-roles-count');
-    const requiredCountElement = document.getElementById('required-roles-count');
-    
     if (selectedCountElement) {
         selectedCountElement.textContent = selectedRoles;
-    }
-    
-    if (requiredCountElement) {
-        requiredCountElement.textContent = playerCount;
     }
     
     const balanceElement = document.getElementById('role-balance');
@@ -147,52 +142,36 @@ function checkRoleBalance() {
     }
 }
 
-// Функция для автоматической балансировки ролей
+// Автобалансировка
 function autoBalanceRoles() {
     const playerCountElement = document.getElementById('player-count');
     const playerCount = playerCountElement ? parseInt(playerCountElement.value) : 8;
     
     let selectedRoles = 0;
     
-    // Считаем текущие роли
     document.querySelectorAll('.role-option').forEach(option => {
         const count = parseInt(option.querySelector('.count').textContent);
         selectedRoles += count;
     });
     
-    console.log(`Автобалансировка: выбрано ${selectedRoles}, нужно ${playerCount}`);
-    
-    // Если ролей не хватает, добавляем мирных жителей
     if (selectedRoles < playerCount) {
         const civilianOption = document.querySelector('.role-option[data-role="civilian"]');
         if (civilianOption) {
             const civilianCount = civilianOption.querySelector('.count');
             let currentCivilian = parseInt(civilianCount.textContent);
             civilianCount.textContent = currentCivilian + (playerCount - selectedRoles);
-            console.log(`Добавлено ${playerCount - selectedRoles} мирных жителей`);
         }
-    }
-    // Если ролей слишком много, убираем лишних мирных жителей
-    else if (selectedRoles > playerCount) {
+    } else if (selectedRoles > playerCount) {
         const civilianOption = document.querySelector('.role-option[data-role="civilian"]');
         if (civilianOption) {
             const civilianCount = civilianOption.querySelector('.count');
             let currentCivilian = parseInt(civilianCount.textContent);
             const newCount = Math.max(0, currentCivilian - (selectedRoles - playerCount));
             civilianCount.textContent = newCount;
-            console.log(`Убрано ${selectedRoles - playerCount} мирных жителей`);
         }
     }
     
     checkRoleBalance();
-}
-
-// Показать главный экран
-function showMainScreen() {
-    document.querySelectorAll('.screen').forEach(screen => {
-        screen.style.display = 'none';
-    });
-    document.getElementById('screen-main').style.display = 'block';
 }
 
 // Показать экран создания комнаты
@@ -202,16 +181,15 @@ function showCreateRoom() {
     });
     document.getElementById('screen-create').style.display = 'block';
     
-    // Сбросить значения по умолчанию
+    // Сбросить значения
     document.getElementById('host-name').value = '';
     document.getElementById('room-name').value = '';
     document.getElementById('player-count').value = '8';
     
-    // Установить роли по умолчанию для 8 игроков
+    // Установить роли по умолчанию
     setDefaultRoles(8);
-    updateRequiredRolesCount();
+    updateRequiredRolesDisplay();
 }
-
 // Показать экран присоединения
 function showJoinRoom() {
     document.querySelectorAll('.screen').forEach(screen => {
