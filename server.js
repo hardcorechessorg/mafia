@@ -1,16 +1,72 @@
-const express = require("express");
-const app = express();
-const path = require("path");
+import express from 'express'
+import { createServer } from 'http'
+import { Server } from 'socket.io'
 
 
-app.use(express.static(__dirname));
+const app = express()
+const httpServer = createServer(app)
+const io = new Server(httpServer)
 
 
-app.get("/", (req, res) => {
-res.sendFile(path.join(__dirname, "index.html"));
-});
+app.use(express.static('public'))
 
 
-app.listen(3000, () => {
-console.log("Server running on http://localhost:3000");
-});
+const games = {}
+
+
+io.on('connection', socket => {
+
+
+socket.on('create-game', settings => {
+const code = 'MAFIA-' + Math.floor(1000 + Math.random() * 9000)
+games[code] = { settings, players: [] }
+socket.join(code)
+socket.emit('game-created', { code })
+})
+
+
+socket.on('join-game', ({ code, name }) => {
+const game = games[code]
+if (!game) return
+
+
+const role = assignRole(game)
+const player = { name, role }
+game.players.push(player)
+
+
+io.to(code).emit('update', game)
+socket.emit('your-role', player)
+})
+})
+
+
+function assignRole(game) {
+const pool = []
+for (let i = 0; i < game.settings.mafia; i++) pool.push('mafia')
+if (game.settings.sheriff) pool.push('sheriff')
+if (game.settings.doctor) pool.push('doctor')
+for (let i = 0; i < game.settings.civil; i++) pool.push('civil')
+
+
+const used = game.players.map(p => p.role.key)
+const available = pool.filter(r => !used.includes(r))
+const key = available[Math.floor(Math.random() * available.length)]
+
+
+return roleMap[key]
+}
+
+
+const roleMap = {
+mafia: { key: 'mafia', name: 'Мафия', team: 'black', desc: 'Ночью устраняете игроков' },
+sheriff: { key: 'sheriff', name: 'Шериф', team: 'red', desc: 'Проверяете игроков' },
+doctor: { key: 'doctor', name: 'Доктор', team: 'red', desc: 'Лечите игроков' },
+civil: { key: 'civil', name: 'Мирный', team: 'red', desc: 'Выживайте' }
+}
+
+
+httpServer.listen(3000, () => {
+console.log('▶ Mafia Dealer: http://localhost:3000')
+})
+

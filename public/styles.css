@@ -1,0 +1,8 @@
+body { font-family: Inter, system-ui, sans-serif; }
+
+
+.card { perspective: 1000px; }
+.card-inner { transition: transform .8s; transform-style: preserve-3d; }
+.card.flipped .card-inner { transform: rotateY(180deg); }
+.card-face { backface-visibility: hidden; }
+.card-back { transform: rotateY(180deg); }
