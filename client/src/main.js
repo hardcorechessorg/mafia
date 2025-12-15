@@ -46,4 +46,5 @@ ${state.isHost ? `
 <button id="start">Начать игру</button>
 ` : '<p>Ожидание ведущего…</p>'}
 `;
-renderHome();
+renderHome()}
+
