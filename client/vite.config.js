@@ -5,7 +5,9 @@ export default defineConfig({
   plugins: [vue()],
   server: {
     proxy: {
-      '/socket.io': 'https://mafia-c6a2.onrender.com'
+      '/socket.io': 'http://localhost:3000'
     }
   }
 })
+
+
