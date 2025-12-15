@@ -1,72 +1,45 @@
-import express from 'express'
-import { createServer } from 'http'
-import { Server } from 'socket.io'
-import path from 'path'
-import { fileURLToPath } from 'url'
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import path from 'path';
 
-const app = express()
-const httpServer = createServer(app)
-const io = new Server(httpServer)
 
-/* ======= path setup (ESM-safe) ======= */
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
 
-/* ======= in-memory game store ======= */
-const games = new Map()
 
-function generateCode() {
-  return Math.random().toString(36).substring(2, 7).toUpperCase()
+const rooms = {};
+
+
+function genCode() {
+return Math.random().toString(36).substring(2, 7).toUpperCase();
 }
 
-/* ======= socket logic ======= */
+
+app.use(express.static(path.join(process.cwd(), 'client/dist')));
+
+
 io.on('connection', socket => {
-  console.log('Connected:', socket.id)
+socket.on('create-room', ({ name }) => {
+const room = genCode();
+rooms[room] = {
+host: socket.id,
+players: [{ id: socket.id, name }]
+};
 
-  socket.on('create-game', config => {
-    const code = generateCode()
-    games.set(code, {
-      code,
-      config,
-      players: []
-    })
 
-    socket.emit('game-created', { code })
-  })
+socket.join(room);
+socket.emit('room-created', { room, isHost: true });
+io.to(room).emit('players-update', rooms[room].players.map(p => p.name));
+});
 
-  socket.on('join-game', ({ code, name }) => {
-    const game = games.get(code)
-    if (!game) return
 
-    const player = {
-      id: socket.id,
-      name,
-      role: null
-    }
+socket.on('start-game', settings => {
+console.log('Game started with settings:', settings);
+});
+});
 
-    game.players.push(player)
-    socket.join(code)
 
-    io.to(code).emit('players-update', game.players)
-  })
-
-  socket.on('disconnect', () => {
-    for (const game of games.values()) {
-      game.players = game.players.filter(p => p.id !== socket.id)
-      io.to(game.code).emit('players-update', game.players)
-    }
-  })
-})
-
-/* ======= serve frontend ======= */
-app.use(express.static(path.join(__dirname, 'client/dist')))
-
-app.get('*', (_, res) => {
-  res.sendFile(path.join(__dirname, 'client/dist/index.html'))
-})
-
-/* ======= start ======= */
-const PORT = process.env.PORT || 3000
-httpServer.listen(PORT, () => {
-  console.log('Server running on port', PORT)
-})
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log('Server running on', PORT));
